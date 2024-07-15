@@ -1,0 +1,211 @@
+npx create-react-app hostel-allocation
+cd hostel-allocation
+
+#App.js: Main component
+import React, { useState } from 'react';
+import UploadForm from './UploadForm';
+import Results from './Results';
+
+function App() {
+  const [results, setResults] = useState(null);
+
+  return (
+    <div className="App">
+      <h1>Group Accommodation Allocation</h1>
+      <UploadForm setResults={setResults} />
+      {results && <Results results={results} />}
+    </div>
+  );
+}
+
+export default App;
+
+#UploadForm.js: Component for CSV upload
+
+import React, { useState } from 'react';
+
+function UploadForm({ setResults }) {
+  const [groupFile, setGroupFile] = useState(null);
+  const [hostelFile, setHostelFile] = useState(null);
+
+  const handleFileUpload = (e) => {
+    const { name, files } = e.target;
+    if (name === 'groupFile') {
+      setGroupFile(files[0]);
+    } else {
+      setHostelFile(files[0]);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append('groupFile', groupFile);
+    formData.append('hostelFile', hostelFile);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await response.json();
+    setResults(data);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label>Upload Group CSV:</label>
+        <input type="file" name="groupFile" accept=".csv" onChange={handleFileUpload} />
+      </div>
+      <div>
+        <label>Upload Hostel CSV:</label>
+        <input type="file" name="hostelFile" accept=".csv" onChange={handleFileUpload} />
+      </div>
+      <button type="submit">Allocate Rooms</button>
+    </form>
+  );
+}
+
+export default UploadForm;
+
+#Results.js: Component for displaying allocation results
+
+import React from 'react';
+
+function Results({ results }) {
+  return (
+    <div>
+      <h2>Allocation Results</h2>
+      <pre>{JSON.stringify(results, null, 2)}</pre>
+    </div>
+  );
+}
+
+export default Results;
+
+
+BACKEND CODESS (USING node.js for backend)
+
+mkdir backend
+cd backend
+npm init -y
+npm install express multer csv-parser
+
+
+server.js
+
+ const express = require('express');
+ const multer = require('multer');
+ const csv = require('csv-parser');
+ const fs = require('fs');
+ const path = require('path');
+
+ const app = express();
+ const upload = multer({ dest: 'uploads/' });
+
+ app.post('/api/upload', upload.fields([{ name: 'groupFile' }, { name: 'hostelFile' }]), (req, res) => {
+   const groupFile = req.files.groupFile[0].path;
+   const hostelFile = req.files.hostelFile[0].path;
+
+   const groupData = [];
+   const hostelData = [];
+
+   fs.createReadStream(groupFile)
+     .pipe(csv())
+     .on('data', (data) => groupData.push(data))
+     .on('end', () => {
+       fs.createReadStream(hostelFile)
+         .pipe(csv())
+         .on('data', (data) => hostelData.push(data))
+         .on('end', () => {
+           const results = allocateRooms(groupData, hostelData);
+           res.json(results);
+         });
+     });
+ });
+
+ const allocateRooms = (groupData, hostelData) => {
+   // Implement room allocation logic here
+   return {}; // Placeholder for allocation results
+  };
+
+ app.listen(5000, () => {
+   console.log('Server is running on port 5000');
+ });
+
+
+ROOM ALLOCATION ALGORITHM 
+
+const csv = require('csv-parser');
+const fs = require('fs');
+
+const allocateRooms = (groupData, hostelData) => {
+  const allocations = [];
+  const rooms = {};
+
+  // Organize hostels by gender and capacity
+  hostelData.forEach((hostel) => {
+    if (!rooms[hostel.gender]) {
+      rooms[hostel.gender] = [];
+    }
+    rooms[hostel.gender].push({ ...hostel, remainingCapacity: hostel.capacity });
+  });
+
+  // Organize groups by ID
+  const groups = groupData.reduce((acc, member) => {
+    if (!acc[member.groupId]) {
+      acc[member.groupId] = [];
+    }
+    acc[member.groupId].push(member);
+    return acc;
+  }, {});
+
+  // Allocate rooms
+  for (const groupId in groups) {
+    const groupMembers = groups[groupId];
+    const groupGender = groupMembers[0].gender;
+    const groupSize = groupMembers.length;
+
+    let allocated = false;
+
+    rooms[groupGender].forEach((room) => {
+      if (room.remainingCapacity >= groupSize && !allocated) {
+        allocations.push({ room: room.roomNumber, members: groupMembers });
+        room.remainingCapacity -= groupSize;
+        allocated = true;
+      }
+    });
+
+    if (!allocated) {
+      allocations.push({ room: 'Not enough space', members: groupMembers });
+    }
+  }
+
+  return allocations;
+};
+
+const processCSVFiles = (groupFile, hostelFile) => {
+  const groupData = [];
+  const hostelData = [];
+
+  fs.createReadStream(groupFile)
+    .pipe(csv())
+    .on('data', (data) => groupData.push(data))
+    .on('end', () => {
+      fs.createReadStream(hostelFile)
+        .pipe(csv())
+        .on('data', (data) => hostelData.push(data))
+        .on('end', () => {
+          const results = allocateRooms(groupData, hostelData);
+          console.log(JSON.stringify(results, null, 2));
+        });
+    });
+};
+
+// Example usage
+processCSVFiles('path/to/group.csv', 'path/to/hostel.csv');
+
+
+
+
